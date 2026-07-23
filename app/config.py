@@ -21,10 +21,6 @@ class Config:
     FLIPKART_CLIENT_SECRET = os.environ.get('FLIPKART_CLIENT_SECRET')
     FLIPKART_REDIRECT_URI = os.environ.get('FLIPKART_REDIRECT_URI')
     FLIPKART_ENVIRONMENT = os.environ.get('FLIPKART_ENVIRONMENT', 'sandbox')
-    FLIPKART_AUTHORIZATION_URL = os.environ.get(
-        'FLIPKART_AUTHORIZATION_URL', 
-        'https://api.flipkart.net/oauth-service/oauth/authorize'
-    )
     FLIPKART_TOKEN_URL = os.environ.get(
         'FLIPKART_TOKEN_URL', 
         'https://ads.api.flipkart.net/ads-agency/token'

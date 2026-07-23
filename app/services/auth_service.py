@@ -1,82 +1,23 @@
-import os
-import secrets
 import requests
-from urllib.parse import urlencode
-from flask import session, current_app
+from typing import Dict, Any
+from flask import current_app
 from app.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
 class AuthService:
     """
-    Service class handling authentication, state validation, token exchange,
-    and token refresh with the Flipkart Ads API.
-    """
+    Service class handling token exchange and token refresh with the Flipkart Ads API.
     
-    @staticmethod
-    def generate_login_url() -> tuple[str, str]:
-        """
-        Generates a secure random state, stores it in the Flask session,
-        and constructs the Flipkart OAuth authorization URL.
-        
-        Returns:
-            tuple[str, str]: (authorization_url, state)
-        """
-        client_id = current_app.config.get('FLIPKART_CLIENT_ID')
-        redirect_uri = current_app.config.get('FLIPKART_REDIRECT_URI')
-        auth_base_url = current_app.config.get('FLIPKART_AUTHORIZATION_URL')
-        
-        if not client_id or not redirect_uri or not auth_base_url:
-            logger.error("OAuth configuration missing: check FLIPKART_CLIENT_ID, FLIPKART_REDIRECT_URI, and FLIPKART_AUTHORIZATION_URL.")
-            raise ValueError("OAuth configuration settings are incomplete.")
-        
-        state = secrets.token_urlsafe(32)
-        session['oauth_state'] = state
-        
-        # Use official scopes specified in the ads agency documentation
-        params = {
-            'client_id': client_id,
-            'redirect_uri': redirect_uri,
-            'response_type': 'code',
-            'scope': 'reporting campaign_management',
-            'state': state
-        }
-        
-        login_url = f"{auth_base_url}?{urlencode(params)}"
-        logger.info("Successfully generated login URL and stored state in session.")
-        return login_url, state
+    SECURITY NOTE: 
+    The initial OAuth authorization flow is now handled client-side by the official 
+    Flipkart Login SDK. Backend state validation has been intentionally removed because 
+    the official SDK does not expose a configurable custom state parameter in its 
+    documented initialization to support CSRF validation on the callback.
+    """
 
     @staticmethod
-    def validate_state(returned_state: str) -> bool:
-        """
-        Compares the returned OAuth state parameter against the one stored in session.
-        Clears the stored state upon execution to prevent replay attacks.
-        
-        Args:
-            returned_state (str): The state parameter received in the callback request.
-            
-        Returns:
-            bool: True if valid and matching, False otherwise.
-        """
-        stored_state = session.pop('oauth_state', None)
-        
-        if not stored_state:
-            logger.warning("State validation failed: No state found in user session.")
-            return False
-            
-        if not returned_state:
-            logger.warning("State validation failed: No state parameter provided in request.")
-            return False
-            
-        if not secrets.compare_digest(stored_state, returned_state):
-            logger.warning("State validation failed: Returned state does not match session state.")
-            return False
-            
-        logger.info("OAuth state parameter validated successfully.")
-        return True
-
-    @staticmethod
-    def exchange_code_for_token(code: str) -> dict:
+    def exchange_code_for_token(code: str) -> Dict[str, Any]:
         """
         Exchanges the authorization code for an Access Token and a Refresh Token
         using parameters in the POST body.
@@ -85,20 +26,23 @@ class AuthService:
             code (str): The authorization code received from the callback.
             
         Returns:
-            dict: The JSON response containing the access_token and refresh_token.
+            Dict[str, Any]: The JSON response containing the access_token and refresh_token.
+            
+        Raises:
+            ValueError: If required configuration is missing or response is invalid.
+            RuntimeError: If the HTTP request fails.
         """
         client_id = current_app.config.get('FLIPKART_CLIENT_ID')
         client_secret = current_app.config.get('FLIPKART_CLIENT_SECRET')
         redirect_uri = current_app.config.get('FLIPKART_REDIRECT_URI')
         token_url = current_app.config.get('FLIPKART_TOKEN_URL')
         
-        if not client_id or not client_secret or not redirect_uri or not token_url:
+        if not all([client_id, client_secret, redirect_uri, token_url]):
             logger.error("Token exchange failed: OAuth credentials or endpoint not configured.")
             raise ValueError("OAuth credentials or endpoint configuration is incomplete.")
             
         logger.info("Initiating token exchange request with Flipkart Ads OAuth endpoint...")
         
-        # Payload parameters sent directly in the POST body
         payload = {
             'client_id': client_id,
             'client_secret': client_secret,
@@ -126,14 +70,14 @@ class AuthService:
             
         except requests.exceptions.RequestException as e:
             logger.error(f"Network or HTTP error occurred during token exchange: {e}")
-            raise RuntimeError("Failed to communicate with Flipkart OAuth token endpoint.") from e
+            raise RuntimeError(f"Failed to communicate with Flipkart OAuth token endpoint: {e}") from e
             
         except ValueError as e:
             logger.error("Failed to parse token response as JSON.")
             raise RuntimeError("Received invalid response format from Flipkart token endpoint.") from e
 
     @staticmethod
-    def refresh_access_token(refresh_token: str) -> dict:
+    def refresh_access_token(refresh_token: str) -> Dict[str, Any]:
         """
         Refreshes an expired access token using parameters in the POST body.
         
@@ -141,13 +85,17 @@ class AuthService:
             refresh_token (str): The refresh token.
             
         Returns:
-            dict: The JSON response containing the new access_token and refresh_token.
+            Dict[str, Any]: The JSON response containing the new access_token and refresh_token.
+            
+        Raises:
+            ValueError: If required configuration is missing or response is invalid.
+            RuntimeError: If the HTTP request fails.
         """
         client_id = current_app.config.get('FLIPKART_CLIENT_ID')
         client_secret = current_app.config.get('FLIPKART_CLIENT_SECRET')
         token_url = current_app.config.get('FLIPKART_TOKEN_URL')
         
-        if not client_id or not client_secret or not token_url:
+        if not all([client_id, client_secret, token_url]):
             logger.error("Token refresh failed: OAuth credentials or endpoint not configured.")
             raise ValueError("OAuth credentials or endpoint configuration is incomplete.")
             
@@ -178,8 +126,29 @@ class AuthService:
             
         except requests.exceptions.RequestException as e:
             logger.error(f"Network or HTTP error occurred during token refresh: {e}")
-            raise RuntimeError("Failed to communicate with Flipkart OAuth token refresh endpoint.") from e
+            raise RuntimeError(f"Failed to communicate with Flipkart OAuth token refresh endpoint: {e}") from e
             
         except ValueError as e:
             logger.error("Failed to parse token refresh response as JSON.")
             raise RuntimeError("Received invalid response format from Flipkart token refresh endpoint.") from e
+
+    @staticmethod
+    def store_tokens(user_id: str, token_data: Dict[str, Any]) -> None:
+        """
+        Securely stores the access and refresh tokens.
+        
+        TODO: Currently uses Flask session as a temporary development storage.
+        This MUST be updated to persist tokens in PostgreSQL (or another secure
+        server-side datastore) keyed by the advertiser/user identity before production.
+        
+        Args:
+            user_id (str): The unique identifier for the advertiser/user.
+            token_data (Dict[str, Any]): The token payload containing access_token and refresh_token.
+        """
+        from flask import session
+        logger.info(f"Storing tokens temporarily in session for user: {user_id}")
+        
+        # TODO: Replace the following session assignments with database insertions.
+        # e.g., db.session.add(TokenModel(user_id=user_id, access_token=..., ...))
+        session['access_token'] = token_data.get("access_token")
+        session['refresh_token'] = token_data.get("refresh_token")

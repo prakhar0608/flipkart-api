@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, redirect
+from flask import Blueprint, request, render_template, current_app, session
 from app.services.auth_service import AuthService
 from app.utils.logger import setup_logger
 
@@ -8,82 +8,81 @@ auth_bp = Blueprint('auth', __name__)
 @auth_bp.route('/login')
 def login():
     """
-    Initiates the Flipkart OAuth authorization flow.
-    Generates a secure state, stores it in session, and redirects to Flipkart.
+    Renders the login page containing the Flipkart Login SDK.
+    Injects the required non-secret configurations (client_id, redirect_uri) 
+    into the template for the SDK to initialize.
     """
-    logger.info("Redirecting user to Flipkart Login Authorization URL...")
-    try:
-        login_url, state = AuthService.generate_login_url()
-        # Log flow progression safely without printing credentials
-        logger.info(f"Oauth login URL generated successfully. Flow state initialized.")
-        return redirect(login_url)
-    except Exception as e:
-        logger.error(f"Failed to generate login URL: {e}")
-        return jsonify({
-            "message": "Internal server error occurred when starting authentication flow",
-            "error": str(e)
-        }), 500
+    client_id = current_app.config.get('FLIPKART_CLIENT_ID')
+    redirect_uri = current_app.config.get('FLIPKART_REDIRECT_URI')
+    
+    if not client_id or not redirect_uri:
+        logger.error("Login route failed: Missing client_id or redirect_uri in configuration.")
+        return render_template(
+            'error.html', 
+            error_title="Configuration Error",
+            error_message="The application is missing required Flipkart configuration settings."
+        ), 500
+
+    logger.info("Rendering login page with Flipkart Login SDK.")
+    return render_template(
+        'login.html', 
+        client_id=client_id, 
+        redirect_uri=redirect_uri
+    )
 
 @auth_bp.route('/callback')
 def callback():
     """
-    Handles redirect callback from Flipkart.
-    Validates state token, checks for errors, and exchanges code for credentials.
+    Handles redirect callback from the Flipkart Login SDK.
+    Exchanges the authorization code for tokens and securely stores them.
+    
+    SECURITY NOTE: State validation is bypassed here intentionally as the 
+    Flipkart Login SDK does not expose a state parameter during initialization.
+    Tokens are securely retained on the backend and NEVER sent to the frontend.
     """
     logger.info("Received callback request from Flipkart OAuth.")
     
     # 1. Capture query parameters
     error = request.args.get('error')
     error_description = request.args.get('error_description')
-    state = request.args.get('state')
     code = request.args.get('code')
     
-    # 2. Check for OAuth errors returned from Flipkart (e.g. user cancelled)
+    # 2. Check for OAuth errors returned from Flipkart
     if error:
         logger.warning(f"OAuth error received from provider: {error} - {error_description}")
-        return jsonify({
-            "message": "Authorization denied or failed from provider",
-            "error": error,
-            "description": error_description
-        }), 400
+        return render_template(
+            'error.html',
+            error_title="Authorization Failed",
+            error_message=error_description or "The authorization request was denied or failed."
+        ), 400
         
-    # 3. Validate state parameter (Anti-CSRF)
-    if not AuthService.validate_state(state):
-        logger.warning("Callback rejected: State parameter validation failed.")
-        return jsonify({
-            "message": "CSRF validation failed or session expired",
-            "error": "invalid_state"
-        }), 400
-        
-    # 4. Check for missing authorization code
+    # 3. Check for missing authorization code
     if not code:
         logger.warning("Callback rejected: Missing authorization code parameter.")
-        return jsonify({
-            "message": "Authorization failed: No authorization code was returned",
-            "error": "missing_code"
-        }), 400
+        return render_template(
+            'error.html',
+            error_title="Invalid Callback",
+            error_message="No authorization code was provided by the authentication provider."
+        ), 400
         
-    # 5. Exchange code for access & refresh tokens
+    # 4. Exchange code for access & refresh tokens
     try:
         logger.info("Processing token exchange using authorization code...")
         token_data = AuthService.exchange_code_for_token(code)
         
-        # Log successful completion without dumping actual secret keys
-        logger.info("Token exchange completed successfully.")
+        # 5. Securely store tokens (delegated to AuthService)
+        # We DO NOT expose these to the frontend
+        # Currently using a dummy user_id 'default_user' since user authentication is not fully implemented
+        AuthService.store_tokens('default_user', token_data)
         
-        return jsonify({
-            "message": "OAuth Authentication completed successfully!",
-            "token_details": {
-                "access_token": token_data.get("access_token"),
-                "refresh_token": token_data.get("refresh_token"),
-                "expires_in": token_data.get("expires_in"),
-                "token_type": token_data.get("token_type")
-            }
-        })
+        logger.info("Token exchange completed successfully. Tokens securely stored.")
+        
+        return render_template('success.html')
         
     except Exception as e:
         logger.error(f"Token exchange failed: {e}")
-        return jsonify({
-            "message": "Failed to exchange authorization code for tokens",
-            "error": str(e)
-        }), 400
+        return render_template(
+            'error.html',
+            error_title="Authentication Error",
+            error_message="An error occurred while securely exchanging authentication tokens. Please try again."
+        ), 500

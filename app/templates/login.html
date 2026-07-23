@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flipkart Ads - Login</title>
+    <!-- Official Flipkart Login SDK -->
+    <script src="https://static-assets-web.flixcart.com/fk-p-pegasus/oauth-client-sdk.0.0.4.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f1f3f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+        }
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2874f0;
+            margin-bottom: 20px;
+        }
+        .description {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+        #fk-login-btn {
+            background-color: #ff9f00;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            width: 100%;
+        }
+        #fk-login-btn:hover {
+            background-color: #e08c00;
+        }
+        #error-msg {
+            color: #dc3545;
+            margin-top: 15px;
+            font-size: 14px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="logo">Ads Intelligence</div>
+        <p class="description">Connect your Flipkart Ads account to unlock powerful analytics and insights.</p>
+        
+        <!-- Button element targeted by the SDK -->
+        <button id="fk-login-btn">Connect with Flipkart</button>
+        <div id="error-msg"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize Flipkart OAuth Client
+            const oauth = new FKOAuthClient({
+                clientId: "{{ client_id }}",
+                redirectUri: "{{ redirect_uri }}",
+                element: "#fk-login-btn",
+                onSuccess: (data) => {
+                    console.log("Flipkart OAuth Success", data);
+                    // If the SDK does not natively redirect the page after success, 
+                    // we manually redirect to the backend callback with the code.
+                    if (data && data.code) {
+                        window.location.href = "{{ redirect_uri }}?code=" + data.code;
+                    }
+                },
+                onError: (error) => {
+                    console.error("Flipkart OAuth Error", error);
+                    const errorMsg = document.getElementById("error-msg");
+                    errorMsg.style.display = "block";
+                    errorMsg.innerText = "Authentication failed. Please try again.";
+                }
+            }).init();
+        });
+    </script>
+
+</body>
+</html>
