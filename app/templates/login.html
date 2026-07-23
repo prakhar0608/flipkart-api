@@ -76,7 +76,7 @@
             const oauth = new FKOAuthClient({
                 clientId: "{{ client_id }}",
                 redirectUri: "{{ redirect_uri }}",
-                element: "#fk-login-btn",
+                element: "fk-login-btn",
                 onSuccess: (data) => {
                     console.log("Flipkart OAuth Success", data);
                     // If the SDK does not natively redirect the page after success, 
