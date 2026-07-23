@@ -12,6 +12,26 @@ def login():
     Injects the required non-secret configurations (client_id, redirect_uri) 
     into the template for the SDK to initialize.
     """
+    import os
+    
+    # 1. Whether FLIPKART_CLIENT_ID exists in os.environ
+    env_exists = 'FLIPKART_CLIENT_ID' in os.environ
+    
+    # 2. Whether FLIPKART_CLIENT_ID exists in current_app.config
+    config_exists = 'FLIPKART_CLIENT_ID' in current_app.config
+    
+    # 3. Whether current_app.config["FLIPKART_CLIENT_ID"] is None
+    config_is_none = current_app.config.get('FLIPKART_CLIENT_ID') is None
+    
+    # 6. The result of current_app.config.keys() containing FLIPKART_CLIENT_ID
+    # (Since keys() output is huge, we log a subset of relevant keys to avoid noise)
+    relevant_keys = [k for k in current_app.config.keys() if 'FLIPKART' in k]
+    
+    logger.info(f"[DEBUG-1] FLIPKART_CLIENT_ID exists in os.environ: {env_exists}")
+    logger.info(f"[DEBUG-2] FLIPKART_CLIENT_ID exists in current_app.config: {config_exists}")
+    logger.info(f"[DEBUG-3] current_app.config['FLIPKART_CLIENT_ID'] is None: {config_is_none}")
+    logger.info(f"[DEBUG-6] current_app.config keys matching 'FLIPKART': {relevant_keys}")
+
     client_id = current_app.config.get('FLIPKART_CLIENT_ID')
     redirect_uri = current_app.config.get('FLIPKART_REDIRECT_URI')
     

@@ -13,12 +13,12 @@ def create_app(config_name: str = None) -> Flask:
     
     # Determine the configuration environment
     if not config_name:
-        # Load from FLASK_ENV if available, default to 'default'
         config_name = os.environ.get('FLASK_ENV', 'default')
         
-    app.config.from_object(config_by_name.get(config_name, config_by_name['default']))
+    selected_config_class = config_by_name.get(config_name, config_by_name['default'])
+    app.config.from_object(selected_config_class)
     
-    logger.info(f"Flask App initialized under environment: {config_name}")
+    logger.info(f"[DEBUG] Flask App initialized. FLASK_ENV/config_name: '{config_name}'. Config class loaded: {selected_config_class.__name__}")
     
     # Register blueprints
     from app.routes.main import main_bp
